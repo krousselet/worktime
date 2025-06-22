@@ -1,6 +1,10 @@
 <template>
   <div>
     <div class="summary">
+        <div>
+  <strong>Semaine {{ getWeekNumber(week.date) }} (calendrier)</strong> :
+  Théorique : 30h / Réel : {{ getWeekHours(week).toFixed(2) }}h
+</div>
       Total des heures prévues : {{ totalTheoretical }}h — Heures réelles : {{ totalActual.toFixed(2) }}h
     </div>
 
@@ -24,14 +28,18 @@
 
         <tr v-for="period in ['matin', 'aprem']" :key="period">
           <td>{{ period === 'matin' ? 'Matin' : 'Après-midi' }}</td>
-          <td v-for="i in 6" :key="i" :class="{ edited: isEdited(week, period, i - 1) }">
-            <div class="original">{{ week.original?.[period]?.[i - 1] || '' }}</div>
-            <div
-              class="modified"
-              contenteditable
-              @blur="updateHour(index, period, i - 1, $event)"
-            >{{ week[period][i - 1] }}</div>
-          </td>
+          <td
+  v-for="i in 6"
+  :key="i"
+  :class="{ edited: isEdited(week, period, i - 1) }"
+>
+  <div class="original">{{ week.original?.[period]?.[i - 1] || '' }}</div>
+  <div
+    class="modified"
+    contenteditable
+    @blur="updateHour(index, period, i - 1, $event)"
+  >{{ week[period][i - 1] }}</div>
+</td>
         </tr>
       </table>
     </div>
@@ -50,7 +58,8 @@ const defaultWeek = () => ({
   original: {
     matin: ['', '', '', '', '', ''],
     aprem: ['', '', '', '', '', '']
-  }
+  },
+  justCreated: true  // <-- flag to track newly added weeks
 })
 
 const weeks = reactive([])
@@ -59,16 +68,39 @@ function saveToStorage() {
   localStorage.setItem('workWeeks', JSON.stringify(weeks))
 }
 
+function getWeekNumber(dateStr) {
+  const date = new Date(dateStr)
+  const target = new Date(date.valueOf())
+  const dayNr = (date.getDay() + 6) % 7
+
+  target.setDate(target.getDate() - dayNr + 3)
+  const firstThursday = new Date(target.getFullYear(), 0, 4)
+  const diff = target - firstThursday
+
+  return 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000))
+}
+
 function loadFromStorage() {
   const data = localStorage.getItem('workWeeks')
   if (data) {
     const parsed = JSON.parse(data)
-    parsed.forEach(w => weeks.push(w))
+    parsed.forEach(w => {
+      // Fallback for older records
+      if (!w.original) {
+        w.original = JSON.parse(JSON.stringify({ matin: w.matin, aprem: w.aprem }))
+      }
+      if (typeof w.justCreated === 'undefined') {
+        w.justCreated = false
+      }
+      weeks.push(w)
+    })
   } else {
     const firstWeek = {
       date: new Date().toISOString().split('T')[0],
       matin: ['8h45 - 12h00', 'Repos', '9h - 14h15', '9h15 - 12h15', 'Repos', '9h - 13h30'],
       aprem: ['Repos', 'Repos', 'Repos', '14h15 - 19h30', '14h15 - 19h45', '16h - 19h15'],
+      original: {},
+      justCreated: false
     }
     firstWeek.original = JSON.parse(JSON.stringify(firstWeek))
     weeks.push(firstWeek)
@@ -90,7 +122,18 @@ function timeToHours(timeStr) {
 }
 
 function addNewWeek() {
+  const newWeek = {
+    date: new Date().toISOString().split('T')[0],
+    matin: ['', '', '', '', '', ''],
+    aprem: ['', '', '', '', '', ''],
+  }
   weeks.push(defaultWeek())
+  // Clone for original
+  newWeek.original = {
+    matin: [...newWeek.matin],
+    aprem: [...newWeek.aprem]
+  }
+  weeks.push(newWeek)
   saveToStorage()
 }
 
@@ -103,7 +146,24 @@ function removeWeek(index) {
 
 function updateHour(weekIdx, timeType, dayIdx, event) {
   const value = event.target.innerText.trim()
-  weeks[weekIdx][timeType][dayIdx] = value
+  const week = weeks[weekIdx]
+
+  week[timeType][dayIdx] = value
+
+  if (week.justCreated) {
+    // Save as original input
+    week.original[timeType][dayIdx] = value
+
+    // Check if all fields are filled
+    const isFilled = ['matin', 'aprem'].every(period =>
+      week[period].every((v, i) => v === week.original[period][i] && v.trim() !== '')
+    )
+
+    if (isFilled) {
+      week.justCreated = false
+    }
+  }
+
   saveToStorage()
 }
 
@@ -157,6 +217,14 @@ button {
 }
 .edited {
   background-color: yellow;
+}
+.original {
+  font-size: 0.8em;
+  color: gray;
+}
+.modified {
+  font-size: 1em;
+  color: red;
 }
 td .original {
   font-size: 0.8em;
