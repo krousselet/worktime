@@ -1,13 +1,5 @@
 <template>
   <div>
-    <div class="summary">
-        <div>
-  <strong>Semaine {{ getWeekNumber(week.date) }} (calendrier)</strong> :
-  Théorique : 30h / Réel : {{ getWeekHours(week).toFixed(2) }}h
-</div>
-      Total des heures prévues : {{ totalTheoretical }}h — Heures réelles : {{ totalActual.toFixed(2) }}h
-    </div>
-
     <button @click="addNewWeek">Ajouter une semaine</button>
 
     <div v-for="(week, index) in weeks" :key="index" class="week-container">
@@ -18,7 +10,9 @@
 
       <button @click="removeWeek(index)">Supprimer la semaine</button>
 
-      <div><strong>Semaine {{ index + 1 }} :</strong> Théorique : 30h / Réel : {{ getWeekHours(week).toFixed(2) }}h</div>
+      <div>
+        <strong>Semaine {{ index + 1 }} :</strong> Théorique : 30h / Réel : {{ getWeekHours(week).toFixed(2) }}h
+      </div>
 
       <table>
         <tr>
@@ -29,17 +23,19 @@
         <tr v-for="period in ['matin', 'aprem']" :key="period">
           <td>{{ period === 'matin' ? 'Matin' : 'Après-midi' }}</td>
           <td
-  v-for="i in 6"
-  :key="i"
-  :class="{ edited: isEdited(week, period, i - 1) }"
->
-  <div class="original">{{ week.original?.[period]?.[i - 1] || '' }}</div>
-  <div
-    class="modified"
-    contenteditable
-    @blur="updateHour(index, period, i - 1, $event)"
-  >{{ week[period][i - 1] }}</div>
-</td>
+            v-for="i in 6"
+            :key="i"
+            :class="{ edited: isEdited(week, period, i - 1) }"
+          >
+            <div class="original">{{ week.original?.[period]?.[i - 1] || '' }}</div>
+            <input
+              class="modified"
+              type="text"
+              v-model="week[period][i - 1]"
+              @input="handleTextInput(week, period, i - 1)"
+              placeholder="Ex: 8h30 - 12h"
+            />
+          </td>
         </tr>
       </table>
     </div>
@@ -47,7 +43,7 @@
 </template>
 
 <script setup>
-import { reactive, onMounted, computed } from 'vue'
+import { reactive, onMounted } from 'vue'
 
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 
@@ -59,7 +55,7 @@ const defaultWeek = () => ({
     matin: ['', '', '', '', '', ''],
     aprem: ['', '', '', '', '', '']
   },
-  justCreated: true  // <-- flag to track newly added weeks
+  justCreated: true
 })
 
 const weeks = reactive([])
@@ -68,24 +64,11 @@ function saveToStorage() {
   localStorage.setItem('workWeeks', JSON.stringify(weeks))
 }
 
-function getWeekNumber(dateStr) {
-  const date = new Date(dateStr)
-  const target = new Date(date.valueOf())
-  const dayNr = (date.getDay() + 6) % 7
-
-  target.setDate(target.getDate() - dayNr + 3)
-  const firstThursday = new Date(target.getFullYear(), 0, 4)
-  const diff = target - firstThursday
-
-  return 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000))
-}
-
 function loadFromStorage() {
   const data = localStorage.getItem('workWeeks')
   if (data) {
     const parsed = JSON.parse(data)
     parsed.forEach(w => {
-      // Fallback for older records
       if (!w.original) {
         w.original = JSON.parse(JSON.stringify({ matin: w.matin, aprem: w.aprem }))
       }
@@ -122,17 +105,7 @@ function timeToHours(timeStr) {
 }
 
 function addNewWeek() {
-  const newWeek = {
-    date: new Date().toISOString().split('T')[0],
-    matin: ['', '', '', '', '', ''],
-    aprem: ['', '', '', '', '', ''],
-  }
-  weeks.push(defaultWeek())
-  // Clone for original
-  newWeek.original = {
-    matin: [...newWeek.matin],
-    aprem: [...newWeek.aprem]
-  }
+  const newWeek = defaultWeek()
   weeks.push(newWeek)
   saveToStorage()
 }
@@ -144,19 +117,14 @@ function removeWeek(index) {
   }
 }
 
-function updateHour(weekIdx, timeType, dayIdx, event) {
-  const value = event.target.innerText.trim()
-  const week = weeks[weekIdx]
-
-  week[timeType][dayIdx] = value
+function handleTextInput(week, period, dayIdx) {
+  const value = week[period][dayIdx]
 
   if (week.justCreated) {
-    // Save as original input
-    week.original[timeType][dayIdx] = value
+    week.original[period][dayIdx] = value
 
-    // Check if all fields are filled
-    const isFilled = ['matin', 'aprem'].every(period =>
-      week[period].every((v, i) => v === week.original[period][i] && v.trim() !== '')
+    const isFilled = ['matin', 'aprem'].every(type =>
+      week[type].every((v, i) => v === week.original[type][i] && v.trim() !== '')
     )
 
     if (isFilled) {
@@ -176,13 +144,10 @@ function isEdited(week, period, index) {
 function getWeekHours(week) {
   let hours = 0
   for (let i = 0; i < 6; i++) {
-    hours += timeToHours(week.matin[i] || '') + timeToHours(week.aprem[i] || '')
+    hours += timeToHours(week.matin[i]) + timeToHours(week.aprem[i])
   }
   return hours
 }
-
-const totalTheoretical = computed(() => weeks.length * 30)
-const totalActual = computed(() => weeks.reduce((sum, week) => sum + getWeekHours(week), 0))
 
 onMounted(() => {
   loadFromStorage()
@@ -196,7 +161,7 @@ table {
   border-spacing: 0;
 }
 th, td {
-  width: 120px;
+  width: 150px;
   padding: 5px;
   border: 1px solid black;
   text-align: center;
@@ -216,22 +181,16 @@ button {
   margin: 20px auto;
 }
 .edited {
-  background-color: yellow;
+  background-color: #fff3cd;
 }
 .original {
   font-size: 0.8em;
   color: gray;
+  margin-bottom: 2px;
 }
 .modified {
   font-size: 1em;
-  color: red;
-}
-td .original {
-  font-size: 0.8em;
-  color: gray;
-}
-td .modified {
-  font-size: 1em;
-  color: red;
+  width: 100%;
+  box-sizing: border-box;
 }
 </style>
