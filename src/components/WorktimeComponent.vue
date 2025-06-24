@@ -1,5 +1,9 @@
 <template>
   <div>
+    <div class="summary">
+      Total des heures prévues : {{ totalTheoretical }}h — Heures réelles : {{ totalActual.toFixed(2) }}h
+    </div>
+
     <button @click="addNewWeek">Ajouter une semaine</button>
 
     <div v-for="(week, index) in weeks" :key="index" class="week-container">
@@ -43,7 +47,7 @@
 </template>
 
 <script setup>
-import { reactive, onMounted } from 'vue'
+import { reactive, onMounted, computed } from 'vue'
 
 const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
 
@@ -148,6 +152,9 @@ function getWeekHours(week) {
   }
   return hours
 }
+
+const totalTheoretical = computed(() => weeks.length * 30)
+const totalActual = computed(() => weeks.reduce((sum, week) => sum + getWeekHours(week), 0))
 
 onMounted(() => {
   loadFromStorage()
